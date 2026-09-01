@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(& .\\\\build.bat main_anim.cu anim_test.exe 2>&1 | Select-Object -Last 5; Write-Output \"exit=$LASTEXITCODE\")",
+      "PowerShell(& .\\\\build.bat min_test.cu min_test.exe 2>&1 | Out-File -Encoding utf8 min_build.log; Write-Output \"exit=$LASTEXITCODE\")",
+      "Read(//c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.1/bin/**)",
+      "Read(//c/Users/86135/Desktop/PROJECT/my first cuda/**)",
+      "PowerShell($b = [System.IO.File]::ReadAllBytes\\(\"$pwd\\\\aabb.h\"\\); $text = [System.Text.Encoding]::ASCII.GetString\\($b\\); $pos = $text.IndexOf\\(\"maximum = b;\"\\); Write-Output \"pos=$pos\"; for \\($i = $pos - 2; $i -le $pos + 100; $i++\\) { Write-Output \\(\"{0}: {1:X2}\" -f $i, $b[$i]\\) })",
+      "PowerShell(& cmd.exe /c 'chcp 936 && cd /d \"C:\\\\Users\\\\86135\\\\Desktop\\\\PROJECT\\\\my first cuda\" && build.bat min_test.cu min_test.exe')",
+      "PowerShell(chcp 936 | Out-Null; & .\\\\build.bat min_test.cu min_test.exe 2>$null; Write-Output \"exit=$LASTEXITCODE\"; chcp 65001 | Out-Null)",
+      "PowerShell(& .\\\\accum.exe 4 2; Write-Output \"run_exit=$LASTEXITCODE\")",
+      "PowerShell(& .\\\\build.bat iso_test1.cu iso_test1.exe --keep 2>$null; Write-Output \"t1_exit=$LASTEXITCODE\"; & .\\\\build.bat iso_test2.cu iso_test2.exe --keep 2>$null; Write-Output \"t2_exit=$LASTEXITCODE\")",
+      "PowerShell($names = 'nvcc.exe','cicc.exe','cudafe++.exe','ptxas.exe','nvopencc64.exe'; foreach \\($n in $names\\) { Get-Item \"C:\\\\Program Files\\\\NVIDIA GPU Computing Toolkit\\\\CUDA\\\\v13.1\\\\bin\\\\$n\" -ErrorAction SilentlyContinue | Select-Object Name, LastWriteTime, Length }; Write-Output '---env---'; Write-Output \"NVCC_PREPEND_FLAGS=$env:NVCC_PREPEND_FLAGS\"; Write-Output \"NVCC_APPEND_FLAGS=$env:NVCC_APPEND_FLAGS\"; Write-Output '---which---'; \\(Get-Command nvcc\\).Source)",
+      "PowerShell($acp = Get-ItemProperty 'HKLM:\\\\SYSTEM\\\\CurrentControlSet\\\\Control\\\\Nls\\\\CodePage' -Name ACP, OEMCP; Write-Output \"ACP=$\\($acp.ACP\\) OEMCP=$\\($acp.OEMCP\\)\"; Write-Output '---msvcp140---'; Get-Item C:\\\\Windows\\\\System32\\\\msvcp140.dll | Select-Object LastWriteTime; Write-Output '---近3小时安装事件---'; Get-WinEvent -FilterHashtable @{LogName='System'; StartTime=\\(Get-Date\\).AddHours\\(-3\\)} -ErrorAction SilentlyContinue | Where-Object { $_.ProviderName -match 'Update|Installer|Servicing' -or $_.Id -in 19,20,4371,4372 } | Select-Object TimeCreated, Id, ProviderName -First 8 | Format-Table -AutoSize)",
+      "PowerShell(Get-WinEvent -FilterHashtable @{LogName='System'; StartTime=\\(Get-Date\\).Date} -ErrorAction SilentlyContinue | Where-Object { $_.Id -in 6005,6006,6008,1074,41,12,13 } | Select-Object TimeCreated, Id, ProviderName | Sort-Object TimeCreated | Format-Table -AutoSize)",
+      "PowerShell(\"Effective ACP: $\\([System.Text.Encoding]::Default.CodePage\\)\"; \"ConsoleCP: $\\(\\(Get-ItemProperty 'HKCU:\\\\Console' -ErrorAction SilentlyContinue\\).CodePage\\)\"; \\(Get-ItemProperty 'HKCU:\\\\Control Panel\\\\International' -ErrorAction SilentlyContinue\\) | Select-Object LocaleName, ACP, OEMCP | Format-List)",
+      "PowerShell(Get-ChildItem \"C:\\\\Program Files\\\\NVIDIA GPU Computing Toolkit\\\\CUDA\" -Directory | Select-Object Name; \\(Get-Command nvcc\\).Source; nvcc --version)",
+      "PowerShell(& .\\\\build.bat iso_test3.cu iso3.exe 2>&1)"
+    ]
+  }
+}

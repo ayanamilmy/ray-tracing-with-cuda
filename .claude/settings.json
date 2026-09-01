@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmd /c 'call \"C:\\\\Program Files\\\\Microsoft Visual Studio\\\\2022\\\\Community\\\\VC\\\\Auxiliary\\\\Build\\\\vcvars64.bat\" >nul && nvcc main.cu -o main.exe -Xcompiler /utf-8')",
+      "PowerShell(cmd /c 'call \"C:\\\\Program Files\\\\Microsoft Visual Studio\\\\2022\\\\Community\\\\VC\\\\Auxiliary\\\\Build\\\\vcvars64.bat\" >nul && nvcc main.cu -o main.exe -Xcompiler /utf-8'; \"exit=$LASTEXITCODE\")",
+      "PowerShell(Measure-Command { & \".\\\\main.exe\" 1> out_bvh.ppm 2> err_bvh.txt } | Select-Object -ExpandProperty TotalSeconds; \"exit=$LASTEXITCODE\"; \"err_size=$\\(\\(Get-Item err_bvh.txt\\).Length\\)\")",
+      "PowerShell(Get-WinEvent -FilterHashtable @{LogName='System'; StartTime=\\(Get-Date '2026-08-25 18:30'\\); EndTime=\\(Get-Date '2026-08-25 19:40'\\)} -ErrorAction SilentlyContinue | Group-Object ProviderName | Sort-Object Count -Descending | Select-Object Count, Name | Format-Table -AutoSize)",
+      "PowerShell(Select-String -Path build2.log -Pattern \"error\" -CaseSensitive:$false | ForEach-Object { if \\($_.Line -match '^\\([A-Za-z]:[^\\(:]+\\)\\\\\\(\\(\\\\d+\\)\\\\\\):'\\) { \"$\\($matches[1]\\):$\\($matches[2]\\)\" } } | Group-Object | Sort-Object Count -Descending | Select-Object Count, Name | Format-Table -AutoSize)"
+    ]
+  }
+}

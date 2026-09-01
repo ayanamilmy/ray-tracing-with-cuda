@@ -1,0 +1,25 @@
+# 编译产物
+*.exe
+*.obj
+*.pdb
+*.res
+*.module_id
+
+# nvcc 中间产物
+*.ii
+*.ptx
+*.cubin
+*.fatbin
+*.fatbin.c
+*.cudafe1.*
+*.stub.c
+*.reg.c
+*_dlink.*
+*.optf
+
+# 日志
+*.log
+*.txt
+
+# 渲染产物(大图不入库,只留 out.png)
+*.ppm
