@@ -1,0 +1,12 @@
+{
+  "origin": "Existing compiled-backend input sources, captured 2026-10-08; restore before reconstruction/prepare.py",
+  "sha256": {
+    "pathtracer.h": "9f80fd99ff9fdb734c5d72381cd54c0c1be89f5fee9c42d9b6dd1549b1b8d642",
+    "device.cu": "3456ccd3340ef0575d3096a063f1110e0ff67193ad07c858d0ce71288d999ebc",
+    "scene_io.h": "f29418cc2ab1e2f34a704670d79817d4c79cfc9161e68653ecc8e405417714f8",
+    "types.h": "c95e44fb308b8ee6a3fc4fd2051dd06f661097c91c07fe2b40745308a517c926",
+    "hit_rules.h": "c140648376ce6d21affbafe3641a1bba4f36303bd536bda20b1754b6325cc06b",
+    "vector_math.h": "e61f52e9d119ec8f3c953398ac9de6c52375220354f1a7f7d81e416fbf7fd521",
+    "launch.h": "dba4a7a1e14d76372f8d6060c6c762079d994f9aa5e9654ab7338e0e1106a0db"
+  }
+}

@@ -21,18 +21,51 @@
 
 #include "ray.h"
 #include "hitable.h"
+#include "texture.h"
 #include "random.h" /* 框架已接好:scatter 里要调 random_in_unit_sphere */
 #include <curand_kernel.h>
 
 class material
 {
 public:
+    __device__ virtual vec3 emitted(const ray &r_in,const hit_record &rec) const
+    {
+        return vec3 (0.0f,0.0f,0.0f);
+    }
+    __device__ virtual bool get_diffuse_albedo(const hit_record &rec, vec3 &out_albedo) const
+    {
+        return false;
+    }
     __device__ virtual bool scatter(const ray &r_in, const hit_record &rec,
                                     vec3 &attenuation, ray &scattered,
                                     curandState *local_rand_state) const = 0;
 };
 
+class diffuse_light:public material
+{
+    public:
+        vec3 emission;
+        __device__ diffuse_light(const vec3 &e):emission(e) {}
 
+
+    __device__ vec3 emitted(const ray &r_in,const hit_record &rec) const override
+    {
+        return emission;
+    }
+    __device__ virtual bool scatter(const ray &r_in, const hit_record &rec,
+                                    vec3 &attenuation, ray &scattered,
+                                    curandState *local_rand_state) const
+    {
+        return false;
+    }
+
+
+
+
+
+
+
+};
 /* ---------- 漫反射(哑光) ----------
  * 思路:光线打到表面后,朝"法线附近"随机反弹 —— 能量被四面八方地涂匀。
  * 这是最朴素的材质:地面、墙、粗糙物体的底色。 */
@@ -40,7 +73,21 @@ class lambertian : public material
 {
 public:
     vec3 albedo; /* 反射率:这个材料"是什么颜色" */
-    __device__ lambertian(vec3 a) : albedo(a) {}
+    texture_view base_color_image;
+    __device__ lambertian(vec3 a, texture_view image = texture_view{})
+        : albedo(a), base_color_image(image) {}
+    __device__ vec3 albedo_at(const hit_record &rec) const
+    {
+        if (!base_color_image.rgba) return albedo;
+        if (!rec.has_uv) return vec3(1, 0, 1);
+        return albedo * sample_base_color(base_color_image, rec.u, rec.v);
+    }
+
+    __device__ bool get_diffuse_albedo(const hit_record &rec, vec3 &out_albedo) const override
+    {
+        out_albedo = albedo_at(rec);
+        return true;
+    }
 
     __device__ virtual bool scatter(const ray &r_in, const hit_record &rec,
                                     vec3 &attenuation, ray &scattered,
@@ -53,9 +100,13 @@ public:
          * 4. 返回 true */
         /* 【批改】✓ 全对。方向 = 法线 + 球内随机点,上次讲过的"代数合并"你用得比课本还简练。
          * 小提示:下面 return true 后面的注释还写着"占位:先保证能编译",现在已是真代码,回头顺手删掉。 */
-        vec3 target = rec.normal + random_in_unit_sphere(local_rand_state);
+        vec3 target = rec.normal + random_unit_vector(local_rand_state);
+
+        if (dot(target, target) <= 1e-12f) {
+            target = rec.normal;
+        }
         scattered = ray(rec.p, target);
-        attenuation = albedo;
+        attenuation = albedo_at(rec);
         return true; /* 占位:先保证能编译 */
     }
 };

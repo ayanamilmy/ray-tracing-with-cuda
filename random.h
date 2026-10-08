@@ -30,6 +30,17 @@ __device__ vec3 random_in_unit_sphere(curandState *local_rand_state)
     return vec3(x, y, z);
 }
 
+
+//取单位球面上的随机点
+__device__ vec3 random_unit_vector(curandState *local_rand_state)
+{
+    vec3 p;
+    do {
+        p = random_in_unit_sphere(local_rand_state);
+    } while (dot(p, p) <= 1e-12f);
+
+    return unit_vector(p);
+}
 /* TODO 核心代码⑥:单位圆盘内的随机点(景深镜头用)
  * 思路:和上面一样,但只在 xy 平面上做:反复取 p = 2*(r1,r2,0) - (1,1,0),
  *       直到 dot(p,p) < 1。 */

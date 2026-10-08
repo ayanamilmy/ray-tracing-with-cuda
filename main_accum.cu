@@ -1,9 +1,22 @@
 // #region 0. 头文件(包含的库)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#define TINYOBJLOADER_IMPLEMENTATION
+#include "third_party/tiny_obj_loader.h"
+#undef TINYOBJLOADER_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
+#include "third_party/stb_image.h"
+#undef STB_IMAGE_IMPLEMENTATION
+#include "texture.h"
+#include <unordered_map>
+#include "mesh_data.h"
+#include "obj_loader.h"
 #include <iostream>
 #include <cstdlib>
 #include <cstdio>
 #include <chrono>
-#define NOMINMAX
+#include <climits>
 #include <windows.h>
 #include <windowsx.h> /* GET_X_LPARAM / GET_WHEEL_DELTA_WPARAM 这些鼠标消息拆包宏 */
 #include <math.h>
@@ -11,6 +24,7 @@
 #include "ray.h"
 #include "hitable_list.h"
 #include "sphere.h"
+#include "triangle.h"
 #include "bvh.h"
 #include "camera.h"
 #include <curand_kernel.h>
@@ -47,7 +61,8 @@ using namespace std;
  *   accum.exe 4 3            → 播 3 秒自动退出(验收模式,控制台打印平均帧率)
  *   accum.exe 4 0 0.15 1280 720 → 1280×720 大图(4 spp 约 22 FPS,运动略卡)
  *   accum.exe 1 0 0.15 1280 720 → 1280×720 + 1 spp(约 87 FPS,暂停攒样本一样变干净)
- * 参数:[spp] [秒数,0=一直播] [sigma_r 颜色容忍度,0=关] [宽度] [高度]
+ * 参数:[spp] [秒数,0=一直播] [sigma_r 颜色容忍度,0=关] [宽度] [高度] [OBJ路径,可选]
+ *   accum.exe 4 0 0.15 720 360 "assets/model.obj" → 在球场景中加入三角化的 OBJ
  *   sigma_r 越大越敢抹(更干净,但细节越容易被抹掉),0.15 是保守默认,大胆试 0.3~0.5。
  * 窗口可以随便拖/双击标题栏最大化:画面保持宽高比、居中显示,多余部分留黑(信箱条),
  * 放大时用 HALFTONE 平滑插值,不会一格一格马赛克。
@@ -61,7 +76,7 @@ using namespace std;
 // #endregion 1
 
 // #region 2. GPU 渲染(光线追踪:render_init → color → render)
-// ===== 以下核函数全部照抄 main.cu,只加一处:render 末尾写回随机数状态 =====
+// ===== color 增加自发光累加;render 末尾写回随机数状态 =====
 // (main.cu 只发射一次无所谓;这里每帧都发射,不写回的话每帧都从同一批骰子重画,
 //   画面会"冻住"在原地闪,和甜点的坑是同一个)
 
@@ -75,33 +90,196 @@ __global__ void render_init(int max_x, int max_y, curandState *rand_state)
     curand_init(1984 + pixel_index, 0, 0, &rand_state[pixel_index]);
 }
 
+struct sphere_light
+{
+    vec3 center;
+    float radius;
+    vec3 emission;
+};
+
+__device__ sphere_light get_scene_light()
+{
+    return {
+        vec3(0.0f, 5.0f, 0.0f),
+        1.0f,
+        vec3(4.0f, 4.0f, 4.0f)
+    };
+}
+
+
+/* 每种方法各取一个样本。参数 a 是当前贡献所属方法的 PDF,参数 b 是竞争方法的 PDF。
+ * 两个 PDF 必须针对同一条连接,并且都使用立体角度量。 */
+__device__ float power_heuristic(float pdf_a, float pdf_b)
+{
+    const float scale = fmaxf(pdf_a, pdf_b);
+    if (scale <= 0.0f)
+        return 0.0f;
+
+    /* 先缩放再平方,避免大的 PDF 直接平方时溢出。 */
+    const float a = pdf_a / scale;
+    const float b = pdf_b / scale;
+    return (a * a) / (a * a + b * b);
+}
+
+/* 均匀采样灯球表面的面积 PDF 是 1 / area。
+ * 对灯球表面上的具体连接终点,转换成立体角 PDF:
+ * p_omega = distance_squared / (abs(cos_light) * area)。这里不检查遮挡。
+ * light_point 必须在该灯球表面;当前场景只有这一个发光物体。 */
+__device__ float sphere_light_pdf(const vec3 &surface_point,
+                                 const vec3 &light_point,
+                                 const sphere_light &light)
+{
+    const float pi = 3.14159265358979323846f;
+    if (light.radius <= 0.0f)
+        return 0.0f;
+
+    const vec3 to_light = light_point - surface_point;
+    const float distance_squared = dot(to_light, to_light);
+    if (distance_squared <= 0.0f)
+        return 0.0f;
+
+    const vec3 wi = to_light / sqrtf(distance_squared);
+    const vec3 light_normal = unit_vector(light_point - light.center);
+    /* diffuse_light 当前双面发光,与绝对值余弦对应。 */
+    const float cos_light = fabsf(dot(light_normal, -wi));
+    if (cos_light <= 0.0f)
+        return 0.0f;
+
+    const float area = 4.0f * pi * light.radius * light.radius;
+    return distance_squared / (cos_light * area);
+}
+
+__device__ vec3 sample_direct_light(const hit_record &rec, const vec3 &albedo,
+                                  const sphere_light &light, hitable **world,
+                                  curandState *local_rand_state)
+{
+    const float pi = 3.14159265358979323846f;
+    const float epsilon = 0.001f;
+    //随机采样
+    vec3 light_normal=random_unit_vector(local_rand_state);
+    vec3 light_point=light.center+light.radius*light_normal;
+    //直接拉一条指向灯的线
+    vec3 to_light=light_point-rec.p;
+    float distance_squared=dot(to_light,to_light);
+    if(distance_squared<=4.0f*epsilon*epsilon)
+    {
+        return vec3(0.0f,0.0f,0.0f);
+    }
+    float distance=sqrt(distance_squared);
+    vec3 wi=to_light/distance;//拉的那条光线的单位向量
+    // 当前表面的法线需要是单位向量。
+    float cos_surface = fmaxf(dot(rec.normal, wi), 0.0f);
+    float cos_light = fabsf(dot(light_normal, -wi));
+
+    if (cos_surface <= 0.0f || cos_light <= 0.0f)
+        return vec3(0.0f, 0.0f, 0.0f);
+    //检查遮挡
+    hit_record blocker;
+    ray shadow_ray(rec.p,wi);
+    if((*world)->hit(shadow_ray,epsilon,distance-epsilon,blocker))
+    {
+        return vec3(0.0f,0.0f,0.0f);
+    }
+    const float pdf_light = sphere_light_pdf(rec.p, light_point, light);
+    if (pdf_light <= 0.0f)
+        return vec3(0.0f, 0.0f, 0.0f);
+
+    /* Lambert 的 normal + random_unit_vector 散射使用余弦加权 PDF。
+     * 这是灯采样的贡献,因此灯 PDF 放在 power_heuristic 的第一个参数。 */
+    const float pdf_bsdf = cos_surface / pi;
+    const float weight = power_heuristic(pdf_light, pdf_bsdf);
+
+    vec3 brdf = albedo / pi;
+    return brdf * light.emission * (cos_surface / pdf_light) * weight;
+}
+
+
+
+
+
+
+
+
+
+
+
 __device__ vec3 color(const ray &r, hitable **world, int depth, curandState *local_rand_state)
 {
-    vec3 col(1.0f, 1.0f, 1.0f);
+    const float pi = 3.14159265358979323846f;
+    vec3 L(0.0f,0.0f,0.0f);//已经收集到的光束，累加器
+    vec3 beta(1.0f,1.0f,1.0f);//当前路径的权重
     ray cur_ray = r;
+    const sphere_light light = get_scene_light();
+
+    /* 下一轮撞到灯时,必须使用上一跳出发点和上一跳材质采样的 PDF。
+     * 相机直接看灯、金属和玻璃的路径目前不与主动灯采样竞争。 */
+    vec3 previous_point(0.0f, 0.0f, 0.0f);
+    float previous_bsdf_pdf = 0.0f;
+    bool previous_used_mis = false;//检测上一跳是否是随机弹射。如果不是随机弹射，那么不能使用光源采样
+
     for (int d = 0; d < depth; d++)
     {
         hit_record rec;
         if ((*world)->hit(cur_ray, 0.001f, 10000.f, rec))
         {
+            /* 先收集发光。漫反射随机路径撞到灯时保留贡献,并乘材质采样的 MIS 权重。
+             * 这里依赖当前场景唯一发光物体就是 get_scene_light() 描述的灯球。
+             * 以后加入其他灯,需要根据灯的身份计算 PDF,并计入选灯概率。 */
+            const vec3 emission = rec.mat_ptr->emitted(cur_ray, rec);//emission是自发光的vec3
+            float emission_weight = 1.0f;
+            if (previous_used_mis && emission.squared_length() > 0.0f)
+            {
+                const float pdf_light = sphere_light_pdf(previous_point, rec.p, light);
+                emission_weight = power_heuristic(previous_bsdf_pdf, pdf_light);
+            }
+            L += beta * emission * emission_weight;
+
+            /* 最后一次求交只收发光,不再产生新的直接光样本或散射。
+             * 否则最后一轮的灯采样被加权了,对应的材质路径却没有下一轮求交机会。 */
+            if (d == depth - 1)
+                break;
+
+            vec3 diffuse_albedo;
+            const bool current_is_diffuse = rec.mat_ptr->get_diffuse_albedo(rec, diffuse_albedo);
+            if (current_is_diffuse)
+            {
+                /* direct 已含当前表面的 albedo。必须在更新 beta 前累加,
+                 * 避免当前表面的反射率被乘两次。每种方法各一个样本,不再除以 2。 */
+                const vec3 direct = sample_direct_light(rec, diffuse_albedo, light,
+                                                       world, local_rand_state);
+                L += beta * direct;
+            }
+
             ray scattered;
             vec3 attenuation;
-            if (rec.mat_ptr->scatter(cur_ray, rec, attenuation, scattered, local_rand_state))
+            if (!rec.mat_ptr->scatter(cur_ray, rec, attenuation, scattered, local_rand_state))
             {
-                col *= attenuation;
-                cur_ray = scattered;
+                break;
             }
-            else
-                return vec3(0.0f, 0.0f, 0.0f);
+            /* 保存本次散射信息。只有 Lambert 使用这套 MIS;
+             * 其他材质沿用原有路径采样,撞到灯时权重为 1。 */
+            previous_used_mis = current_is_diffuse;
+            previous_point = rec.p;
+            previous_bsdf_pdf = current_is_diffuse ?
+                fmaxf(dot(rec.normal, unit_vector(scattered.direction())), 0.0f) / pi : 0.0f;
+
+            beta *= attenuation;
+            cur_ray = scattered;
         }
         else
         {
             vec3 unit_direction = unit_vector(cur_ray.direction());
             float t = 0.5f * (unit_direction.y() + 1.0f);
-            return col * ((1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0));
+            vec3 sky =
+                (1.0f - t) * vec3(1.0f, 1.0f, 1.0f) +
+                t * vec3(0.5f, 0.7f, 1.0f);
+
+            /* 当前没有主动采样天空,因此天空贡献没有竞争方法,完整保留。 */
+            L += beta * sky;
+            break;
         }
     }
-    return vec3(0.0f, 0.0f, 0.0f);
+    return L;
 }
 
 __global__ void render(vec3 *fb, int max_x, int max_y, int ns, camera cam, hitable **world, curandState *rand_state)
@@ -228,7 +406,10 @@ struct scene
     }
 };
 
-__global__ void create_world(hitable **d_list, hitable **d_world, int capacity, int *d_num_objects)
+__global__ void create_world(hitable **d_list, hitable **d_world, int capacity, int *d_num_objects,
+                             const triangle_data *d_triangles, int num_triangles,
+                             const material_data_gpu *d_material_data, int num_materials,
+                             lambertian **d_mesh_materials)
 {
     if (threadIdx.x == 0 && blockIdx.x == 0)
     {
@@ -267,16 +448,39 @@ __global__ void create_world(hitable **d_list, hitable **d_world, int capacity, 
                 }
             }
         }
+        /* CPU 只上传顶点数据。带虚函数的 triangle 对象必须在 GPU 上 new,
+         * 不能把 CPU 上构造的多态对象直接 memcpy 到显存。
+         * OBJ 的材质编号引用共享材质表,贴图像素保持到渲染结束。 */
+        if (num_triangles > 0)
+        {
+            for (int i = 0; i < num_materials; ++i) {
+                const material_data_gpu &m = d_material_data[i];
+                d_mesh_materials[i] = new lambertian(m.diffuse, m.image);
+            }
+            for (int i = 0; i < num_triangles; ++i) {
+                const triangle_data &t = d_triangles[i];
+                s.add(new triangle(t, d_mesh_materials[t.material_id]));
+            }
+        }
+
+        /* 网格和灯球都必须在构建 BVH 前加入,这样它们才会参与求交。 */
+        sphere_light light = get_scene_light();
+        s.add(new sphere(light.center, light.radius,
+                         new diffuse_light(light.emission)));
         *d_world = new bvh_node(d_list, 0, s.count);
         *d_num_objects = s.count;
     }
 }
 
-__global__ void free_world(hitable **d_list, hitable **d_world, int num_objects)
+__global__ void free_world(hitable **d_list, hitable **d_world, int num_objects,
+                           lambertian **d_mesh_materials, int num_materials)
 {
     if (threadIdx.x == 0 && blockIdx.x == 0)
     {
         ((bvh_node *)(*d_world))->destroy();
+        /* 三角形共用的材质只释放一次,并且在销毁网格之后释放。 */
+        for (int i = 0; i < num_materials; ++i)
+            delete d_mesh_materials[i];
     }
 }
 // #endregion 4
@@ -618,7 +822,26 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM w, LPARAM l)
 }
 // #endregion 7
 
+/* 只在显示时截断到 [0,1];路径计算和累计缓冲保留线性 HDR 值。 */
+static unsigned char to_display_byte(float linear_value)
+{
+    float value = fminf(fmaxf(linear_value, 0.0f), 1.0f);
+    const float encoded = value <= 0.0031308f ? 12.92f * value
+        : 1.055f * powf(value, 1.0f / 2.4f) - 0.055f;
+    return static_cast<unsigned char>(255.0f * encoded + 0.5f);
+}
+
 // #region 8. main(总指挥:开局 → 窗口 → 循环 → 收摊)
+/* 初始化时立即报告 CUDA 调用错误,避免显存分配失败后继续执行。 */
+static void check_cuda(cudaError_t status, const char *operation)
+{
+    if (status != cudaSuccess)
+    {
+        cerr << operation << ": " << cudaGetErrorString(status) << endl;
+        exit(EXIT_FAILURE);
+    }
+}
+
 int main(int argc, char **argv)
 {
     // #region 8a. 参数解析 + GPU 开局(分配显存 / 建场景)
@@ -629,35 +852,139 @@ int main(int argc, char **argv)
     float sigma_r = (argc > 3) ? (float)atof(argv[3]) : 0.15f;    /* 双边滤波:颜色容忍度,0 = 关 */
     const float sigma_s = 2.0f;                                   // 空间权重的高斯 σ(窗口半径 = ceil(2σ) = 4,即 9×9)
 
+    /* 第 6 个参数是可选的 OBJ 路径。先在 CPU 上读取,文件错误时无需分配显存。
+     * 不传路径时 triangles 为空,继续运行原来的球场景。
+     * 顶点沿用 OBJ 的原坐标和大小;导出时请三角化,并使用 Y 轴向上的坐标。 */
+    mesh_data_cpu mesh;
+    if (argc > 6)
+    {
+        try
+        {
+            mesh = load_obj_mesh(argv[6]);
+        }
+        catch (const exception &error)
+        {
+            cerr << "Failed to load OBJ: " << error.what() << endl;
+            return 1;
+        }
+        cout << "Loaded OBJ: " << argv[6] << " (" << mesh.triangles.size()
+             << " triangles; " << mesh.materials.size() << " materials)" << endl;
+    }
+    const auto &triangles = mesh.triangles;
+    const int num_materials = static_cast<int>(mesh.materials.size());
+
+    // 原场景最多 22*22 个小球 + 4 个大球 + 1 个灯球,1024 个槽足够。
+    // 网格每个三角形也是一个 hitable,因此要另外增加相同数量的槽。
+    const int BASE_OBJECT_CAPACITY = 1024;
+    if (triangles.size() > static_cast<size_t>((INT_MAX - 1) / 2 - BASE_OBJECT_CAPACITY))
+    {
+        cerr << "OBJ has too many triangles for the current BVH." << endl;
+        return 1;
+    }
+    const int num_triangles = static_cast<int>(triangles.size());
+    const int max_objects = BASE_OBJECT_CAPACITY + num_triangles;
+
     // ===== GPU 侧:和 main.cu 一模一样的开局 =====
-    cudaDeviceSetLimit(cudaLimitStackSize, 32768);
+    check_cuda(cudaDeviceSetLimit(cudaLimitStackSize, 32768), "Set CUDA stack size");
+    if (num_triangles > 0)
+    {
+        /* cudaMalloc 的传输缓冲和 GPU 内 new 使用的堆是两回事。
+         * 为三角形对象、BVH 节点和分配器开销预留动态堆空间。 */
+        const size_t heap_bytes = 64u * 1024u * 1024u
+            + static_cast<size_t>(num_triangles)
+                * (sizeof(triangle) + 2 * sizeof(flat_node) + 128u)
+            + static_cast<size_t>(num_materials) * (sizeof(lambertian) + 128u);
+        check_cuda(cudaDeviceSetLimit(cudaLimitMallocHeapSize, heap_bytes),
+                   "Set CUDA device heap size");
+    }
     int num_pixels = nx * ny;
     size_t fb_size = num_pixels * sizeof(vec3);
     vec3 *fb;
-    cudaMalloc((void **)&fb, fb_size); // 显存帧缓冲(不再用统一内存:动画每帧要读,页迁移税 34ms/帧,见诊断)
+    check_cuda(cudaMalloc((void **)&fb, fb_size), "Allocate frame buffer"); // 显存帧缓冲(不再用统一内存:动画每帧要读,页迁移税 34ms/帧,见诊断)
     vec3 *fb_host;
-    cudaMallocHost((void **)&fb_host, fb_size); /* 钉住(pinned)的主机暂存区:每帧一次 memcpy,读它没有页故障 */
+    check_cuda(cudaMallocHost((void **)&fb_host, fb_size), "Allocate host frame buffer"); /* 钉住(pinned)的主机暂存区:每帧一次 memcpy,读它没有页故障 */
     vec3 *fb_bi;
-    cudaMalloc((void **)&fb_bi, fb_size); // 双边滤波后的帧缓冲(bilateral 核函数的输出)
+    check_cuda(cudaMalloc((void **)&fb_bi, fb_size), "Allocate filtered frame buffer"); // 双边滤波后的帧缓冲(bilateral 核函数的输出)
     vec3 *fb_acc;
-    cudaMalloc((void **)&fb_acc, fb_size); /* 累计账本:暂停时把每帧画面加进来,显示时除以已攒帧数 */
+    check_cuda(cudaMalloc((void **)&fb_acc, fb_size), "Allocate accumulation buffer"); /* 累计账本:暂停时把每帧画面加进来,显示时除以已攒帧数 */
 
     curandState *d_rand_state;
-    cudaMalloc((void **)&d_rand_state, num_pixels * sizeof(curandState));
+    check_cuda(cudaMalloc((void **)&d_rand_state, num_pixels * sizeof(curandState)),
+               "Allocate random states");
 
-    const int MAX_OBJECTS = 1024;
+    /* 传输的只有 triangle_data 数组。create_world 的 triangle 构造函数会复制
+     * 其中的位置、UV 和法线,所以建场景完成后即可释放这份临时传输缓冲。 */
+    triangle_data *d_triangles = nullptr;
+    lambertian **d_mesh_materials = nullptr;
+    material_data_gpu *d_material_data = nullptr;
+    vector<unsigned char *> texture_allocations;
+    unordered_map<string, texture_view> texture_cache;
+    if (num_triangles > 0)
+    {
+        const size_t triangle_bytes = triangles.size() * sizeof(triangle_data);
+        check_cuda(cudaMalloc((void **)&d_triangles, triangle_bytes),
+                   "Allocate OBJ transfer buffer");
+        check_cuda(cudaMemcpy(d_triangles, triangles.data(), triangle_bytes,
+                              cudaMemcpyHostToDevice), "Upload OBJ triangles");
+        vector<material_data_gpu> material_data(num_materials);
+        try {
+            for (int i = 0; i < num_materials; ++i) {
+                const material_data_cpu &m = mesh.materials[i];
+                material_data[i].diffuse = m.diffuse;
+                texture_view view;
+                if (!m.base_color_path.empty()) {
+                    auto cached = texture_cache.find(m.base_color_path);
+                    if (cached != texture_cache.end()) view = cached->second;
+                    else {
+                        const assets::Image image = assets::load_image(m.base_color_path);
+                        unsigned char *pixels = nullptr;
+                        check_cuda(cudaMalloc((void **)&pixels, image.rgba.size()), "Allocate base-color image");
+                        check_cuda(cudaMemcpy(pixels, image.rgba.data(), image.rgba.size(), cudaMemcpyHostToDevice),
+                                   "Upload base-color image");
+                        view.rgba = pixels; view.width = image.width; view.height = image.height;
+                        texture_allocations.push_back(pixels);
+                        texture_cache.emplace(m.base_color_path, view);
+                    }
+                }
+                view.u_scale = m.u_scale; view.v_scale = m.v_scale;
+                view.u_offset = m.u_offset; view.v_offset = m.v_offset;
+                view.clamp = m.clamp; view.srgb = m.srgb;
+                material_data[i].image = view;
+            }
+        } catch (const exception &error) {
+            cerr << "Failed to load texture: " << error.what() << endl;
+            for (unsigned char *pixels : texture_allocations) cudaFree(pixels);
+            return 1;
+        }
+        const size_t material_bytes = material_data.size() * sizeof(material_data_gpu);
+        check_cuda(cudaMalloc((void **)&d_material_data, material_bytes), "Allocate material descriptions");
+        check_cuda(cudaMemcpy(d_material_data, material_data.data(), material_bytes, cudaMemcpyHostToDevice),
+                   "Upload material descriptions");
+        check_cuda(cudaMalloc((void **)&d_mesh_materials, static_cast<size_t>(num_materials) * sizeof(lambertian *)),
+                   "Allocate mesh material table");
+    }
+
     hitable **d_list;
     hitable **d_world;
     int *d_num_objects;
-    cudaMalloc((void **)&d_list, MAX_OBJECTS * sizeof(hitable *));
-    cudaMalloc((void **)&d_world, sizeof(hitable *));
-    cudaMalloc((void **)&d_num_objects, sizeof(int));
-    create_world<<<1, 1>>>(d_list, d_world, MAX_OBJECTS, d_num_objects);
+    check_cuda(cudaMalloc((void **)&d_list, static_cast<size_t>(max_objects) * sizeof(hitable *)),
+               "Allocate scene object list");
+    check_cuda(cudaMalloc((void **)&d_world, sizeof(hitable *)), "Allocate world pointer");
+    check_cuda(cudaMalloc((void **)&d_num_objects, sizeof(int)), "Allocate object count");
+    cout << "Building scene and BVH..." << endl;
+    create_world<<<1, 1>>>(d_list, d_world, max_objects, d_num_objects,
+                           d_triangles, num_triangles, d_material_data, num_materials, d_mesh_materials);
+    check_cuda(cudaGetLastError(), "Launch create_world");
+    check_cuda(cudaDeviceSynchronize(), "Build scene and BVH");
+    if (d_triangles != nullptr)
+        check_cuda(cudaFree(d_triangles), "Free OBJ transfer buffer");
+    if (d_material_data != nullptr)
+        check_cuda(cudaFree(d_material_data), "Free material transfer buffer");
 
     dim3 threads(8, 8);
     dim3 blocks((nx + threads.x - 1) / threads.x, (ny + threads.y - 1) / threads.y);
     render_init<<<blocks, threads>>>(nx, ny, d_rand_state);
-    cudaDeviceSynchronize();
+    check_cuda(cudaDeviceSynchronize(), "Initialize render random states");
 
     /* 暂停状态机:g_paused 由窗口消息翻转,主循环每帧看它一眼 */
     bool paused = false;
@@ -798,7 +1125,7 @@ int main(int argc, char **argv)
         auto t2 = chrono::steady_clock::now();
         sec_render += chrono::duration<double>(t2 - t1).count();
 
-        // fb_host(线性 RGB float)→ DIB(BGRA 8bit,gamma 开根,和 main.cu 输出同款)
+        // fb_host(线性 RGB float)→ DIB(BGRA 8bit,sRGB 编码)
         // 行序要对齐:fb 第 0 行 = 图像最下面一行(main.cu 写 PPM 时从 j=ny-1 往下数,顶行在前);
         // DIB 第 0 行 = 屏幕最上面一行(负高度 = 从上往下)。倒着取,画面才不倒。
         // 样本均值:账本总和 ÷ 已攒帧数(inv_count 上面已备好;不攒时 = 1,等于不除)
@@ -811,9 +1138,9 @@ int main(int argc, char **argv)
             {
                 /* TODO 核心代码③b:样本均值除法(一行)——把账本总和除以已攒帧数 */
                 const vec3 &col = fb_host[src_row * nx + c] * inv_count;
-                p[0] = (unsigned char)(255.99f * sqrtf(col.b()));
-                p[1] = (unsigned char)(255.99f * sqrtf(col.g()));
-                p[2] = (unsigned char)(255.99f * sqrtf(col.r()));
+                p[0] = to_display_byte(col.b());
+                p[1] = to_display_byte(col.g());
+                p[2] = to_display_byte(col.r());
                 p[3] = 255;
                 p += 4;
             }
@@ -878,7 +1205,13 @@ int main(int argc, char **argv)
     // ===== 收摊(和 main.cu 一样)=====
     int num_objects = 0;
     cudaMemcpy(&num_objects, d_num_objects, sizeof(int), cudaMemcpyDeviceToHost);
-    free_world<<<1, 1>>>(d_list, d_world, num_objects);
+    free_world<<<1, 1>>>(d_list, d_world, num_objects, d_mesh_materials, num_materials);
+    check_cuda(cudaGetLastError(), "Launch free_world");
+    check_cuda(cudaDeviceSynchronize(), "Free scene");
+    if (d_mesh_materials != nullptr)
+        check_cuda(cudaFree(d_mesh_materials), "Free mesh material table");
+    for (unsigned char *pixels : texture_allocations)
+        check_cuda(cudaFree(pixels), "Free base-color image");
     cudaFree(d_num_objects);
     cudaFree(d_list);
     cudaFree(d_world);

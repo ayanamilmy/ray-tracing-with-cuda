@@ -1,0 +1,13 @@
+{
+  "snapshot_date": "2026-10-06",
+  "files_sha256": {
+    "metal/main.mm": "1085898f0afc549c75eca0eb1ce29b1206e0a49f65ad3f214ae6d33b1399e4fd",
+    "metal/pathtracer.metal": "40eebe3ac3c7aeba91588c13d67769176b5b648816325214ae5c76eeb00a9610",
+    "metal/shared_types.h": "b6809b3ced42710588bd1d949e662e32b1f49b93355716c1b2dbdcab488d714c",
+    "metal/toon_profiles.h": "6d817528064129ef0bf3c39e943ff8f05de5428cfc3a44a81cef3cbf0421045d",
+    "third_party/tiny_obj_loader.h": "cffc9c8746541bd14a3ba877cd3c52cb7ccfe3779b1d5863f7d13f05d26f1ef8",
+    "third_party/stb_image.h": "594c2fe35d49488b4382dbfaec8f98366defca819d916ac95becf3e75f4200b3",
+    "shared/asset_io.h": "97ca7ccc2edcf545c02219d285d9d778d15d95f3a4ab8dd9dc371cfdbf8ef86a"
+  },
+  "origin": "Existing Metal implementation, not original CUDA; HoyoToon adapter remains a local path-tracing adaptation, not an official BRDF."
+}

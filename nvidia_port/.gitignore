@@ -1,0 +1,5 @@
+build/
+*.npt
+*.ppm
+*.f32
+__pycache__/
