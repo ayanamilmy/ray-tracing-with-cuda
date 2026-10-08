@@ -1,0 +1,38 @@
+{
+  "compiler": "Homebrew LLVM Clang 21.1.8 / NVPTX",
+  "cuda_headers": "12.8.90",
+  "libdevice": "CUDA 12.8.93",
+  "optix": "9.0.0",
+  "optix_archive_sha256": "069a5860040ea611e7eb6317f8e3bb0f0d54a5acac744568f7290d7cb8711c05",
+  "flags": [
+    "-std=c++20",
+    "-O3",
+    "-fno-fast-math",
+    "-ffp-contract=off",
+    "--cuda-device-only",
+    "--cuda-gpu-arch=sm_120",
+    "-S"
+  ],
+  "ptx_version": "8.7",
+  "architecture": "sm_120",
+  "entries": [
+    "__anyhit__filter",
+    "__closesthit__surface",
+    "__intersection__sphere",
+    "__miss__empty",
+    "__raygen__trace",
+    "__raygen__encode"
+  ],
+  "launch_bytes": 624,
+  "gpu_execution_verified": false,
+  "sha256": {
+    "include/pathtracer.h": "b908e4d42bdb39a1a2d9e3da4de1d64f16cc576c5e4527ad34b696f39a7c1eb7",
+    "include/types.h": "c95e44fb308b8ee6a3fc4fd2051dd06f661097c91c07fe2b40745308a517c926",
+    "include/vector_math.h": "855415a72c19ee7293a024fb5d2221b87ea4fa2522fead71308eb2a894a4b1b1",
+    "optix/device.cu": "b3209a444d95c07d84e2eea66062968c591ca6fbffeb8eaff1abce871416a2e8",
+    "optix/launch.h": "e21825ae9a6010209ce7cd61950ebd3cbc34ff28f12cb13040fca990f09cfb73",
+    "optix/hit_rules.h": "c955f178bdc9d45697789bb257071120afa8fa8b00debeac745f94b1c21aa5a7",
+    "optix/make_kernel.py": "36a751b90869c64345895d43f4fd1a3310c48ce190ac56eb094877636e53bbbe",
+    "optix/prebuilt/sm_120.ptx": "46b1397d2c69e562688f8def549fc75062f6d5e0c731b9b683376fa0feebb52b"
+  }
+}

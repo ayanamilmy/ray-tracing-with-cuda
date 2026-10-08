@@ -17,12 +17,17 @@ struct hit_record
     vec3 p;      // 击中点的三维空间坐标
     vec3 normal; // 击中点表面的法向量
     material *mat_ptr; // 新增：打中的物体表面裹着什么材料
+    vec3 geometric_normal = vec3(0, 0, 0);
+    float u = 0.0f, v = 0.0f;
+    bool has_uv = false;
 };
 
 // 抽象基类：世界上所有可以被光线击中的物体的“老祖宗”
 class hitable
 {
 public:
+    // BVH 通过 hitable* 删除球和三角形,需要虚析构以正确销毁派生对象。
+    __device__ virtual ~hitable() {}
     // 👇 极其关键：这是会在 GPU 显存里动态调用的虚函数，必须贴上 __device__ 通行证！
     // = 0 表示这是纯虚函数，强迫它的子类（比如球、列表）必须自己实现击中逻辑
     __device__ virtual bool hit(const ray &r, float t_min, float t_max, hit_record &rec) const = 0;

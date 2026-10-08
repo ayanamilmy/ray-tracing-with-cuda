@@ -41,6 +41,9 @@ public:
                 rec.t = T_1;
                 rec.p = r.point_at_parameter(rec.t);
                 rec.normal = (rec.p - center) / radius;
+                rec.geometric_normal = rec.normal;
+                rec.u = rec.v = 0.0f;
+                rec.has_uv = false;
                 rec.mat_ptr = mat_ptr; // 把材料写进记录：color() 拿到记录才知道该问谁
                 return true;
             }//记录一下打中的情况
@@ -51,6 +54,9 @@ public:
                 rec.t = T_2;
                 rec.p = r.point_at_parameter(rec.t);
                 rec.normal = (rec.p - center) / radius;
+                rec.geometric_normal = rec.normal;
+                rec.u = rec.v = 0.0f;
+                rec.has_uv = false;
                 rec.mat_ptr = mat_ptr; // 把材料写进记录：color() 拿到记录才知道该问谁
                 return true;
             } // 记录一下打中的情况

@@ -1,0 +1,200 @@
+{
+  "description": "Authored correction: turned torso, head facing camera, separate left index, bone-attached grip.",
+  "bones": {
+    "Bip001 L UpperArm": [
+      0,
+      0,
+      -24
+    ],
+    "Bip001 R UpperArm": [
+      0,
+      0,
+      27
+    ],
+    "Bip001 Head": [
+      0,
+      -12,
+      3
+    ]
+  },
+  "weapon": {
+    "mesh": "Zhenzhen_Weapon_4",
+    "bone": "Bip001 R Hand",
+    "offset": [
+      0.065,
+      0.022,
+      0
+    ],
+    "axes": [
+      "-x",
+      "z",
+      "y"
+    ],
+    "pivot": [
+      0,
+      -0.34,
+      0
+    ],
+    "scale": 1
+  },
+  "materials": {
+    "MAT_Zhenzhen_Body_UI": {
+      "floats": {
+        "_SpecIntensity": 0.045
+      }
+    },
+    "MAT_Zhenzhen_Hair_UI": {
+      "floats": {
+        "_SpecIntensity": 0.045
+      }
+    }
+  },
+  "local_bones": {
+    "Bip001 R Finger1": [
+      0,
+      0,
+      45
+    ],
+    "Bip001 R Finger11": [
+      0,
+      0,
+      85
+    ],
+    "Bip001 R Finger12": [
+      0,
+      0,
+      50
+    ],
+    "Bip001 R Finger2": [
+      0,
+      0,
+      45
+    ],
+    "Bip001 R Finger21": [
+      0,
+      0,
+      85
+    ],
+    "Bip001 R Finger22": [
+      0,
+      0,
+      50
+    ],
+    "Bip001 R Finger3": [
+      0,
+      0,
+      45
+    ],
+    "Bip001 R Finger31": [
+      0,
+      0,
+      85
+    ],
+    "Bip001 R Finger32": [
+      0,
+      0,
+      50
+    ],
+    "Bip001 R Finger4": [
+      0,
+      0,
+      45
+    ],
+    "Bip001 R Finger41": [
+      0,
+      0,
+      85
+    ],
+    "Bip001 R Finger42": [
+      0,
+      0,
+      50
+    ],
+    "Bip001 R Finger0": [
+      0,
+      0,
+      15
+    ],
+    "Bip001 R Finger01": [
+      0,
+      0,
+      30
+    ],
+    "Bip001 L Hand": [
+      35,
+      0,
+      -10
+    ],
+    "Bip001 L Finger1": [
+      0,
+      0,
+      -35
+    ],
+    "Bip001 L Finger11": [
+      0,
+      0,
+      -8
+    ],
+    "Bip001 L Finger2": [
+      0,
+      0,
+      12
+    ],
+    "Bip001 L Finger21": [
+      0,
+      0,
+      8
+    ],
+    "Bip001 L Finger3": [
+      0,
+      0,
+      12
+    ],
+    "Bip001 L Finger31": [
+      0,
+      0,
+      8
+    ],
+    "Bip001 L Finger4": [
+      0,
+      0,
+      12
+    ],
+    "Bip001 L Finger41": [
+      0,
+      0,
+      8
+    ]
+  },
+  "root_rotation": [
+    0,
+    24,
+    0
+  ],
+  "root_pivot_bone": "Bip001 Pelvis",
+  "aim_bones": {
+    "Bip001 R Hand": {
+      "x": [
+        -0.55,
+        0.1474,
+        -0.82
+      ],
+      "z": [
+        0.2588190451,
+        0.9659258263,
+        0
+      ]
+    }
+  },
+  "gaze": {
+    "bones": [
+      "Skn_L_Eye",
+      "Skn_R_Eye"
+    ],
+    "target": [
+      0.13,
+      1.24,
+      2.32
+    ]
+  }
+}

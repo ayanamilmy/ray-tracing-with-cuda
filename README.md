@@ -3,6 +3,8 @@
 从零学 CUDA 的项目:把《Ray Tracing in One Weekend》逐步移植到 GPU,带交互窗口。
 当前版本:M4 —— 自由相机(UE5 式操作)+ 静止累计采样 + 双边滤波降噪。
 
+交互版现已支持 OBJ 的 UV、顶点法线、MTL 材质分组和底色图片，见 [资产说明](ASSET_SUPPORT.md)。Mac 使用独立的 [Metal 版本](metal/README.md)。
+
 ## 环境要求
 
 - Windows 10/11

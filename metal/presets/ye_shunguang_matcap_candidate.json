@@ -1,0 +1,16 @@
+{
+  "name": "Ye Shunguang authored MatCap validation",
+  "evidence": "Authored candidate to exercise supplied images; no recovered Unity ID-to-filename mapping. Shared PathIDs intentionally share a filename. Not an official binding.",
+  "path_ids": {
+    "-7678717654992888628": "Eff_MatCap_008.png",
+    "6032497980576422551": "Eff_MatCap_019.png",
+    "-5822381305968025504": "Eff_MatCap_055.png",
+    "-3832790743405947456": "Eff_MatCap_021.png",
+    "-4926364038638048260": "Eff_MatCap_037.png",
+    "-2645346064420857429": "Eff_Matcap_048.png",
+    "5075943231653877846": "Eff_Matcap_047.png",
+    "-807226201400800218": "Eff_MatCap_060.png",
+    "4423653694971391668": "Eff_Matcap_Socks_03.png",
+    "4116637714984099291": "Eff_MatCap_065.png"
+  }
+}

@@ -23,3 +23,15 @@
 
 # 渲染产物(大图不入库,只留 out.png)
 *.ppm
+
+# Independent Metal build products
+/metal/build/
+
+# Local Python caches and cloud connection state
+__pycache__/
+*.pyc
+*.sock
+.env
+*.npt
+!nvidia_port/optix/prebuilt/sm_120.ptx
+/nvidia_port/variants/*/build/
